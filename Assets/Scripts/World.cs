@@ -6,20 +6,21 @@ public class World : MonoBehaviour
 {
     [SerializeField] int worldSize = 4; // a grid of 4 by 4 chunks
     [SerializeField] int chunkSize = 10; // chunk is 10 units by 10 units
-    [SerializeField] float cellSize = 1f; // size of each cell in units
+    float cellSize = 1f;
     float[,] density;
     [SerializeField][Range(0f, 1f)] float noiseThreshold = 0.6f;
     [SerializeField] float noiseScale = 0.1f;
     int mapResolution; // total number of cells per map side
-
     Mesh mesh;
     MeshFilter meshFilter;
     MeshRenderer meshRenderer;
+    MeshCollider meshCollider;
 
     void Awake()
     {
         meshFilter = GetComponent<MeshFilter>();
         meshRenderer = GetComponent<MeshRenderer>();
+        meshCollider = GetComponent<MeshCollider>();
     }
 
     void Start()
@@ -34,8 +35,8 @@ public class World : MonoBehaviour
     //     if (density == null)
     //         return;
 
-    //     float mapWidth = size * chunkSize;
-    //     float mapHeight = size * chunkSize;
+    //     float mapWidth = worldSize * chunkSize;
+    //     float mapHeight = worldSize * chunkSize;
 
     //     float cellWidth = mapWidth / mapResolution;
     //     float cellHeight = mapHeight / mapResolution;
@@ -80,25 +81,31 @@ public class World : MonoBehaviour
     void MarchingSquares()
     {
         List<Vector3> vertices = new List<Vector3>();
-        List<int> triangles = new List<int>();
+        List<int> triangles = new List<int>();        
+        Dictionary<Vector3, int> vertexMap = new Dictionary<Vector3, int>();
+
+        int TryAddTriangle(Vector3 v)
+        {
+            if (vertexMap.ContainsKey(v))
+                return vertexMap[v];
+
+            int index = vertices.Count;
+            vertexMap[v] = index;
+            vertices.Add(v);
+            return index;
+        }
 
         void AddTriangle(Vector3 p, Vector3 q, Vector3 r)
         {
-            int startIndex = vertices.Count;
-            vertices.Add(r);
-            vertices.Add(q);
-            vertices.Add(p);
-            triangles.Add(startIndex);
-            triangles.Add(startIndex + 1);
-            triangles.Add(startIndex + 2);
-            
-            Vector2[] edgePoints = new Vector2[3];
-            edgePoints[0] = r;
-            edgePoints[1] = q;
-            edgePoints[2] = p;
+            int a = TryAddTriangle(r);
+            int b = TryAddTriangle(q);
+            int c = TryAddTriangle(p);
+            triangles.Add(a);
+            triangles.Add(b);
+            triangles.Add(c);
 
-            EdgeCollider2D ec = gameObject.AddComponent<EdgeCollider2D>();
-            ec.points = edgePoints;
+            // EdgeCollider2D ec = gameObject.AddComponent<EdgeCollider2D>();
+            // ec.points = new Vector2[] {r, q, p, r};
         }
 
         for (int i = 0; i < mapResolution; ++i)
@@ -221,9 +228,11 @@ public class World : MonoBehaviour
         }
 
         mesh = new Mesh();
+        mesh.RecalculateBounds();
         mesh.vertices = vertices.ToArray();
         mesh.triangles = triangles.ToArray();
         meshFilter.mesh = mesh;
+        meshCollider.sharedMesh = mesh;
     }
 
     public void Dig(Vector3 worldPos)
