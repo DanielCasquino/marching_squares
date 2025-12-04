@@ -382,7 +382,13 @@ public class Chunk : MonoBehaviour
     }
 
 
-    public void ModifyNode(int i, int j, bool value)
+    public void densityAction(int i, int j, bool value, bool isSet = true)
+    {
+        if (isSet) SetDensity(i, j, value);
+        else OverrideDensity(i, j, value);
+    }
+
+    public void ModifyNode(int i, int j, bool value, bool isSet = true)
     {
         if (i < 0 || i > chunkResolution || j < 0 || j > chunkResolution)
             return;
@@ -397,16 +403,16 @@ public class Chunk : MonoBehaviour
         Chunk left, right, top, bottom;
         World.instance.GetNeighbour(chunkId, out left, out right, out top, out bottom);
 
-        SetDensity(i, j, value);
+        densityAction(i, j, value);
 
         if (updateLeft && left != null)
-            left.SetDensity(chunkResolution, j, value);
+            left.densityAction(chunkResolution, j, value);
         if (updateRight && right != null)
-            right.SetDensity(0, j, value);
+            right.densityAction(0, j, value);
         if (updateBottom && bottom != null)
-            bottom.SetDensity(i, chunkResolution, value);
+            bottom.densityAction(i, chunkResolution, value);
         if (updateTop && top != null)
-            top.SetDensity(i, 0, value);
+            top.densityAction(i, 0, value);
 
         // Corners
         if (updateLeft && updateBottom && left != null && bottom != null)
@@ -414,28 +420,28 @@ public class Chunk : MonoBehaviour
             Chunk bottomLeft;
             World.instance.GetNeighbour(left.chunkId, out _, out _, out _, out bottomLeft);
             if (bottomLeft != null)
-                bottomLeft.SetDensity(chunkResolution, chunkResolution, value);
+                bottomLeft.densityAction(chunkResolution, chunkResolution, value);
         }
         if (updateRight && updateBottom && right != null && bottom != null)
         {
             Chunk bottomRight;
             World.instance.GetNeighbour(right.chunkId, out _, out _, out _, out bottomRight);
             if (bottomRight != null)
-                bottomRight.SetDensity(0, chunkResolution, value);
+                bottomRight.densityAction(0, chunkResolution, value);
         }
         if (updateLeft && updateTop && left != null && top != null)
         {
             Chunk topLeft;
             World.instance.GetNeighbour(left.chunkId, out _, out _, out topLeft, out _);
             if (topLeft != null)
-                topLeft.SetDensity(chunkResolution, 0, value);
+                topLeft.densityAction(chunkResolution, 0, value);
         }
         if (updateRight && updateTop && right != null && top != null)
         {
             Chunk topRight;
             World.instance.GetNeighbour(right.chunkId, out _, out _, out topRight, out _);
             if (topRight != null)
-                topRight.SetDensity(0, 0, value);
+                topRight.densityAction(0, 0, value);
         }
         // this is awful
     }

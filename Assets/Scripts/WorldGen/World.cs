@@ -1,4 +1,48 @@
 using UnityEngine;
+using System.Collections.Generic;
+
+[System.Serializable]
+public class StructureInfo
+{
+    public int id;
+
+    [HideInInspector]
+    public Bounds boundingBox;
+
+    public GameObject prefab;
+
+    public StructureInfo() { }
+
+    public void UpdateBoundingBox(float padding = 5.0f)
+    {
+        if (prefab == null)
+        {
+            this.boundingBox = new Bounds(Vector3.zero, Vector3.one);
+            return;
+        }
+
+        SpriteRenderer spriteRenderer = prefab.GetComponentInChildren<SpriteRenderer>();
+        if (spriteRenderer != null)
+        {
+            boundingBox = spriteRenderer.bounds;
+            boundingBox.Expand(new Vector3(padding, padding, 0f));
+        }
+        else
+        {
+            this.boundingBox = new Bounds(Vector3.zero, Vector3.one);
+            this.boundingBox.Expand(new Vector3(padding, padding, 0f));
+        }
+    }
+
+
+}
+
+public class PlacedStructure
+{
+    public int id;
+    public Vector2 center;
+    public Bounds boundingBox;
+}
 
 public class World : MonoBehaviour
 {
@@ -11,8 +55,17 @@ public class World : MonoBehaviour
     Chunk[,] chunks;
     [field: SerializeField] public float noiseScale { get; private set; } = 0.07f;
     [field: SerializeField] public float noiseThreshold { get; private set; } = 0.5f;
+    [field: SerializeField] public float padding = 5.0f;
     [SerializeField] Transform floor;
     EdgeCollider2D boundsCollider;
+
+    // Atributos para la estructura
+    [SerializeField] StructureInfo[] structureList;
+    [SerializeField] int structuresToSpawn = 20;
+    [SerializeField] int minDistance = 10;
+
+    Dictionary<int, StructureInfo> structures = new Dictionary<int, StructureInfo>();
+    List<PlacedStructure> placedStructures = new List<PlacedStructure>();
 
     void Awake()
     {
@@ -24,11 +77,24 @@ public class World : MonoBehaviour
         boundsCollider = GetComponent<EdgeCollider2D>();
     }
 
+    void OnValidate()
+    {
+        if (structureList == null) return;
+
+        foreach (var s in structureList)
+        {
+            if (s.prefab != null)
+            {
+                s.UpdateBoundingBox(padding);
+            }
+        }
+    }
+
     void Start()
     {
         CreateChunks();
         CreateBounds();
-        // aca poner generateStructures()
+        SpawnStructures();
         GenerateChunks();
     }
 
@@ -126,5 +192,132 @@ public class World : MonoBehaviour
         points[4] = Vector2.zero;
 
         boundsCollider.points = points;
+    }
+    // Para generar las estructuras
+    void SpawnStructures()
+    {
+
+        if (structureList.Length <= 0) return;
+
+        float worldSize = worldResolution * chunkResolution * cellSize;
+
+        for (int i = 0; i < structuresToSpawn; ++i)
+        {
+            Vector2 point = Vector2.zero;
+            Bounds bb = new Bounds();
+            StructureInfo info = new StructureInfo();
+
+            bool es_valido = false;
+            while (!es_valido)
+            {
+
+                point = new Vector2(Random.Range(0, worldSize), Random.Range(0, worldSize));
+                info = PickRandomStructure();
+                bb = new Bounds(
+                    new Vector3(point.x, point.y, 0),
+                    info.boundingBox.size
+                );
+
+                es_valido = true;
+
+                // Límite del mundo
+                if (bb.min.x < 0 || bb.max.x > worldSize) es_valido = false;
+                else if (bb.min.y < 0 || bb.max.y > worldSize) es_valido = false;
+
+                // Superposición con otras estructuras
+                else if (IsOverlapping(bb)) es_valido = false;
+
+                // Distancia mínima
+                else if (!HasMinBoxDistance(bb, info.boundingBox, minDistance)) es_valido = false;
+
+            }
+
+            // funcion que setea los lugares de la malla es 0.
+            DisableMeshChunks(bb);
+
+            Instantiate(info.prefab, point, Quaternion.identity, transform);
+
+            placedStructures.Add(new PlacedStructure()
+            {
+                id = info.id,
+                center = point,
+                boundingBox = bb
+            });
+        }
+    }
+
+    bool IsOverlapping(Bounds newBB)
+    {
+        foreach (var s in placedStructures)
+        {
+            if (newBB.Intersects(s.boundingBox))
+                return true;
+        }
+
+        return false;
+    }
+
+    void DisableMeshChunks(Bounds bb)
+    {
+        int startX = Mathf.FloorToInt(bb.min.x);
+        int endX = Mathf.CeilToInt(bb.max.x);
+
+        int startY = Mathf.FloorToInt(bb.min.y);
+        int endY = Mathf.CeilToInt(bb.max.y);
+
+        for (int x = startX; x < endX; x++)
+        {
+            for (int y = startY; y < endY; y++)
+            {
+                Vector2 cord = new Vector2(x, y);
+
+                int chunkId = PositionToChunkId(cord);
+                Vector2Int pos_in_chunk = PositionToChunkSpace(cord, chunkId);
+
+                int chunkX = chunkId % worldResolution;
+                int chunkY = chunkId / worldResolution;
+
+                chunks[chunkX, chunkY].ModifyNode(pos_in_chunk.x, pos_in_chunk.y, false, false);
+            }
+        }
+    }
+
+    StructureInfo PickRandomStructure()
+    {
+        return structureList[Random.Range(0, structureList.Length)];
+    }
+
+    bool HasMinBoxDistance(Bounds a, Bounds b, float minDist)
+    {
+        float dx = 0f;
+
+        if (a.max.x < b.min.x)
+            dx = b.min.x - a.max.x;
+        else if (b.max.x < a.min.x)
+            dx = a.min.x - b.max.x;
+
+        float dy = 0f;
+
+        if (a.max.y < b.min.y)
+            dy = b.min.y - a.max.y;
+        else if (b.max.y < a.min.y)
+            dy = a.min.y - b.max.y;
+
+        float dist = Mathf.Sqrt(dx * dx + dy * dy);
+
+        return dist >= minDist;
+    }
+
+    // Para ver los mbb
+    void OnDrawGizmos()
+    {
+        if (placedStructures == null) return;
+
+        Gizmos.color = Color.yellow;
+
+        foreach (var ps in placedStructures)
+        {
+            Gizmos.DrawWireCube(ps.boundingBox.center, ps.boundingBox.size);
+        }
     }
 }
